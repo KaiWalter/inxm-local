@@ -16,31 +16,66 @@
         };
 
         rustToolchain = pkgs.rust-bin.stable.latest.default;
+
+        runtimeLibs = with pkgs; [
+          # Native libraries needed by GTK/tray icon and reqwest/native-tls.
+          gtk3
+          libayatana-appindicator
+          openssl
+          dbus
+
+          # Linux windowing deps used by egui/winit (x11 path).
+          libx11
+          libxcursor
+          libxi
+          libxrandr
+          libxext
+          libxcb
+          libxkbcommon
+
+          # Common runtime dependency for GUI stacks.
+          libGL
+        ];
+
+        build = pkgs.rustPlatform.buildRustPackage {
+          pname = "inxm-local";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+
+          # Upstream tests require network/TLS system trust + python in-path; skip in
+          # package builds so `nix build .#build` behaves like a release artifact build.
+          doCheck = false;
+
+          nativeBuildInputs = [
+            pkgs.pkg-config
+          ];
+
+          buildInputs = runtimeLibs;
+        };
+
+        run = pkgs.writeShellScriptBin "inxm-local-run" ''
+          export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:''${LD_LIBRARY_PATH:-}"
+          exec ${build}/bin/inxm-local "$@"
+        '';
       in
       {
+        packages = {
+          default = build;
+          build = build;
+          run = run;
+        };
+
+        apps = {
+          default = flake-utils.lib.mkApp { drv = run; };
+          run = flake-utils.lib.mkApp { drv = run; };
+        };
+
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             rustToolchain
             pkg-config
-
-            # Native libraries needed by GTK/tray icon and reqwest/native-tls.
-            gtk3
-            libayatana-appindicator
-            openssl
-            dbus
-
-            # Linux windowing deps used by egui/winit (x11 path).
-            xorg.libX11
-            xorg.libXcursor
-            xorg.libXi
-            xorg.libXrandr
-            xorg.libXext
-            xorg.libxcb
-            libxkbcommon
-
-            # Common runtime dependency for GUI stacks.
-            libGL
-          ];
+          ] ++ runtimeLibs;
 
           env = {
             RUST_BACKTRACE = "1";
