@@ -56,6 +56,13 @@
 
         run = pkgs.writeShellScriptBin "inxm-local-run" ''
           export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:''${LD_LIBRARY_PATH:-}"
+          op account get --account my
+          if [ $? -ne 0 ]; then
+            eval $(op signin --account my)
+          fi
+
+          export AZURE_OPENAI_API_KEY=$(op item get "Azure OpenAI API Key" --vault Private --fields label=key --format json | jq -r '.value')
+
           exec ${build}/bin/inxm-local "$@"
         '';
       in
